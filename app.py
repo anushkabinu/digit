@@ -1,32 +1,52 @@
 import streamlit as st
 import numpy as np
+import matplotlib.pyplot as plt
 from PIL import Image, ImageOps
 import joblib
+import os
 
-# Load trained SVM model and scaler
-model = joblib.load("svm_digit_model.joblib")
-scaler = joblib.load("digit_scaler.joblib")
+# Load model and scaler
+model_path = "svm_digit_model.joblib"
+scaler_path = "digit_scaler.joblib"
 
-st.title("Digit Classifier (8x8 SVM)")
-st.write("Upload a **28x28 or higher** grayscale image of a digit (0-9).")
+if not os.path.exists(model_path) or not os.path.exists(scaler_path):
+    st.error("❌ Model or scaler file not found. Please ensure 'svm_digit_model.joblib' and 'digit_scaler.joblib' exist.")
+    st.stop()
 
-uploaded_file = st.file_uploader("Choose an image...", type=["png", "jpg", "jpeg"])
+model = joblib.load(model_path)
+scaler = joblib.load(scaler_path)
 
-def preprocess_image(image):
-    # Convert to grayscale and invert if needed
-    image = image.convert("L")
-    image = ImageOps.invert(image)
-    image = image.resize((8, 8))  # Resize to 8x8
-    image_np = np.array(image)
-    image_np = image_np / 16.0  # Normalize to same scale as sklearn's digits
-    return image_np.reshape(1, -1)
+# App title
+st.title("🧠 Handwritten Digit Classifier (SVM)")
+
+# Upload image
+uploaded_file = st.file_uploader("Upload an 8x8 grayscale digit image (64x64, will be resized)", type=["png", "jpg", "jpeg"])
 
 if uploaded_file is not None:
-    image = Image.open(uploaded_file)
-    st.image(image, caption="Uploaded Image", use_column_width=False)
+    # Load and preprocess image
+    image = Image.open(uploaded_file).convert("L")  # convert to grayscale
+    image_resized = ImageOps.fit(image, (8, 8), method=Image.LANCZOS)
+    
+    # Optional: show image
+    st.image(image_resized.resize((128, 128)), caption="Uploaded Image (resized to 8x8)", use_column_width=False)
 
-    if st.button("Predict"):
-        input_data = preprocess_image(image)
-        input_data_scaled = scaler.transform(input_data)
-        prediction = model.predict(input_data_scaled)
-        st.success(f"Predicted Digit: {prediction[0]}")
+    # Normalize image to match sklearn format (0-16 pixel range)
+    image_np = np.asarray(image_resized)
+    image_np = np.clip((16 - (image_np / 16)), 0, 16)  # invert and scale
+    image_flat = image_np.flatten().reshape(1, -1)
+
+    # Standardize using saved scaler
+    image_scaled = scaler.transform(image_flat)
+
+    # Predict
+    prediction = model.predict(image_scaled)[0]
+
+    st.success(f"✅ Predicted Digit: **{prediction}**")
+
+    # Show raw values as heatmap
+    st.write("Image Data (8x8):")
+    fig, ax = plt.subplots()
+    ax.imshow(image_np, cmap='gray', interpolation='nearest')
+    ax.set_title(f'Predicted: {prediction}')
+    ax.axis('off')
+    st.pyplot(fig)
