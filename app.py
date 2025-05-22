@@ -1,52 +1,43 @@
 import streamlit as st
 import numpy as np
-import matplotlib.pyplot as plt
-from PIL import Image, ImageOps
 import joblib
+from PIL import Image, ImageOps
 import os
 
-# Load model and scaler
-model_path = "svm_digit_model.joblib"
-scaler_path = "digit_scaler.joblib"
+# Check if model and scaler exist
+MODEL_PATH = "svm_digit_model.joblib"
+SCALER_PATH = "digit_scaler.joblib"
 
-if not os.path.exists(model_path) or not os.path.exists(scaler_path):
+if not os.path.exists(MODEL_PATH) or not os.path.exists(SCALER_PATH):
     st.error("❌ Model or scaler file not found. Please ensure 'svm_digit_model.joblib' and 'digit_scaler.joblib' exist.")
     st.stop()
 
-model = joblib.load(model_path)
-scaler = joblib.load(scaler_path)
+# Load model and scaler
+model = joblib.load(MODEL_PATH)
+scaler = joblib.load(SCALER_PATH)
 
-# App title
-st.title("🧠 Handwritten Digit Classifier (SVM)")
+# Streamlit UI
+st.title("🔢 Handwritten Digit Classifier")
+st.write("Upload a **28x28 or 8x8 grayscale image** of a digit (0–9) to classify.")
 
-# Upload image
-uploaded_file = st.file_uploader("Upload an 8x8 grayscale digit image (64x64, will be resized)", type=["png", "jpg", "jpeg"])
+uploaded_file = st.file_uploader("Choose a digit image...", type=["jpg", "png", "jpeg"])
 
 if uploaded_file is not None:
-    # Load and preprocess image
-    image = Image.open(uploaded_file).convert("L")  # convert to grayscale
-    image_resized = ImageOps.fit(image, (8, 8), method=Image.LANCZOS)
-    
-    # Optional: show image
-    st.image(image_resized.resize((128, 128)), caption="Uploaded Image (resized to 8x8)", use_column_width=False)
+    image = Image.open(uploaded_file).convert("L")  # Convert to grayscale
+    st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    # Normalize image to match sklearn format (0-16 pixel range)
-    image_np = np.asarray(image_resized)
-    image_np = np.clip((16 - (image_np / 16)), 0, 16)  # invert and scale
-    image_flat = image_np.flatten().reshape(1, -1)
+    # Preprocess the image to match the 8x8 format of the dataset
+    image_resized = image.resize((8, 8), Image.Resampling.LANCZOS)
+    image_inverted = ImageOps.invert(image_resized)
+    image_array = np.array(image_inverted).astype(float)
 
-    # Standardize using saved scaler
-    image_scaled = scaler.transform(image_flat)
+    # Scale image data like the dataset: pixel values between 0–16
+    image_scaled = (image_array / 255.0) * 16.0
+    image_flatten = image_scaled.flatten().reshape(1, -1)
 
-    # Predict
-    prediction = model.predict(image_scaled)[0]
+    # Apply the saved scaler
+    image_flatten_scaled = scaler.transform(image_flatten)
 
+    # Make prediction
+    prediction = model.predict(image_flatten_scaled)[0]
     st.success(f"✅ Predicted Digit: **{prediction}**")
-
-    # Show raw values as heatmap
-    st.write("Image Data (8x8):")
-    fig, ax = plt.subplots()
-    ax.imshow(image_np, cmap='gray', interpolation='nearest')
-    ax.set_title(f'Predicted: {prediction}')
-    ax.axis('off')
-    st.pyplot(fig)
