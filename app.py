@@ -1,39 +1,32 @@
 import streamlit as st
 import numpy as np
-from PIL import Image
-import tensorflow as tf
-import matplotlib.pyplot as plt
+from PIL import Image, ImageOps
+import joblib
 
-# Load the trained model
-@st.cache_resource
-def load_model():
-    return tf.keras.models.load_model("mnist_digit_model.h5")
+# Load trained SVM model and scaler
+model = joblib.load("svm_digit_model.joblib")
+scaler = joblib.load("digit_scaler.joblib")
 
-model = load_model()
+st.title("Digit Classifier (8x8 SVM)")
+st.write("Upload a **28x28 or higher** grayscale image of a digit (0-9).")
 
-# Preprocess uploaded image
+uploaded_file = st.file_uploader("Choose an image...", type=["png", "jpg", "jpeg"])
+
 def preprocess_image(image):
-    img = image.convert('L')           # Convert to grayscale
-    img = img.resize((28, 28))         # Resize to 28x28
-    img_array = np.array(img)
-    img_array = 255 - img_array        # Invert image (white digit on black bg)
-    img_array = img_array / 255.0      # Normalize
-    img_array = img_array.reshape(1, 28, 28, 1)
-    return img_array
-
-# Streamlit UI
-st.title("Handwritten Digit Recognizer (MNIST Model)")
-
-uploaded_file = st.file_uploader("Upload an image of a digit", type=["png", "jpg", "jpeg"])
+    # Convert to grayscale and invert if needed
+    image = image.convert("L")
+    image = ImageOps.invert(image)
+    image = image.resize((8, 8))  # Resize to 8x8
+    image_np = np.array(image)
+    image_np = image_np / 16.0  # Normalize to same scale as sklearn's digits
+    return image_np.reshape(1, -1)
 
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
-    st.image(image, caption="Uploaded Image", use_column_width=True)
+    st.image(image, caption="Uploaded Image", use_column_width=False)
 
     if st.button("Predict"):
-        processed_image = preprocess_image(image)
-        prediction = model.predict(processed_image)
-        predicted_digit = np.argmax(prediction)
-
-        st.success(f"Predicted Digit: **{predicted_digit}**")
-        st.bar_chart(prediction[0])
+        input_data = preprocess_image(image)
+        input_data_scaled = scaler.transform(input_data)
+        prediction = model.predict(input_data_scaled)
+        st.success(f"Predicted Digit: {prediction[0]}")
